@@ -1,0 +1,54 @@
+name: Build Project from ZIP
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Unzip project.zip
+      run: |
+        unzip project.zip -d project_files
+
+    - name: Setup Android NDK
+      uses: nttld/setup-ndk@v1
+      with:
+        ndk-version: r25c
+
+    - name: Manual Build (clang++)
+      run: |
+        cd project_files/project
+        
+        # Путь к компилятору clang++ для 64-битной ARM
+        CXX="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang++"
+        
+        # Собираем список всех файлов cpp и c
+        # Исключаем возможные тестовые файлы (например, imgui_demo.cpp), чтобы не раздувать размер
+        FILES=$(find . -name "*.cpp" -o -name "*.c" | grep -v "imgui_demo.cpp")
+        
+        echo "Начинаем сборку..."
+        echo "$FILES"
+        
+        # Компилируем в .so (-shared, -fPIC)
+        # Указываем линковку с нужными системными библиотеками Android (log, android, GLESv3, EGL)
+        $CXX -shared -fPIC -O2 -s \
+          -o libNexuraWare.so \
+          $FILES \
+          -I. \
+          -llog -landroid -lGLESv3 -lEGL -lz -ldl -lm
+          
+        echo "Сборка завершена!"
+
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: Compiled-Libraries
+        # Забираем получившийся .so файл
+        path: project_files/project/*.so
